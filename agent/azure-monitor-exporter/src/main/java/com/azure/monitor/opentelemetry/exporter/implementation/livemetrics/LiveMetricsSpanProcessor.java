@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-package com.azure.monitor.opentelemetry.exporter.implementation;
+package com.azure.monitor.opentelemetry.exporter.implementation.livemetrics;
 
+import com.azure.monitor.opentelemetry.exporter.implementation.SpanDataMapper;
 import com.azure.monitor.opentelemetry.exporter.implementation.quickpulse.QuickPulse;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.trace.ReadWriteSpan;
@@ -14,7 +15,7 @@ public class LiveMetricsSpanProcessor implements SpanProcessor {
   private final QuickPulse quickPulse;
   private final SpanDataMapper mapper;
 
-  public LiveMetricsSpanProcessor(QuickPulse quickPulse, SpanDataMapper mapper) {
+  public LiveMetricsSpanProcessor(SpanDataMapper mapper, QuickPulse quickPulse) {
     this.quickPulse = quickPulse;
     this.mapper = mapper;
   }
@@ -30,7 +31,6 @@ public class LiveMetricsSpanProcessor implements SpanProcessor {
   @Override
   public void onEnd(ReadableSpan readableSpan) {
     if (quickPulse.isEnabled()) {
-      // TODO (trask) can we do anything better here in terms of double conversion?
       quickPulse.add(mapper.map(readableSpan.toSpanData()));
     }
   }

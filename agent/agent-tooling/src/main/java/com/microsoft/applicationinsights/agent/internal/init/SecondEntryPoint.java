@@ -11,6 +11,8 @@ import com.azure.monitor.opentelemetry.exporter.implementation.MetricDataMapper;
 import com.azure.monitor.opentelemetry.exporter.implementation.SpanDataMapper;
 import com.azure.monitor.opentelemetry.exporter.implementation.configuration.ConnectionString;
 import com.azure.monitor.opentelemetry.exporter.implementation.heartbeat.HeartbeatExporter;
+import com.azure.monitor.opentelemetry.exporter.implementation.livemetrics.LiveMetricsLogProcessor;
+import com.azure.monitor.opentelemetry.exporter.implementation.livemetrics.LiveMetricsSpanProcessor;
 import com.azure.monitor.opentelemetry.exporter.implementation.models.TelemetryItem;
 import com.azure.monitor.opentelemetry.exporter.implementation.quickpulse.QuickPulse;
 import com.azure.monitor.opentelemetry.exporter.implementation.utils.Strings;
@@ -181,20 +183,6 @@ public class SecondEntryPoint implements AutoConfigurationCustomizerProvider {
               telemetryClient, SecondEntryPoint.agentLogExporter, appIdSupplier));
     }
 
-    RpConfiguration rpConfiguration = FirstEntryPoint.getRpConfiguration();
-    if (rpConfiguration != null) {
-      RpConfigurationPolling.startPolling(
-          rpConfiguration, configuration, telemetryClient, appIdSupplier);
-    }
-
-    // initialize StatsbeatModule
-    statsbeatModule.start(telemetryClient, configuration);
-
-    AfterAgentListener.setAppIdSupplier(appIdSupplier);
-
-    // TODO (trask) add this method to AutoConfigurationCustomizer upstream?
-    ((AutoConfiguredOpenTelemetrySdkBuilder) autoConfiguration).registerShutdownHook(false);
-
     QuickPulse quickPulse;
     if (configuration.preview.liveMetrics.enabled) {
       quickPulse =
@@ -214,6 +202,20 @@ public class SecondEntryPoint implements AutoConfigurationCustomizerProvider {
       quickPulse = null;
     }
     telemetryClient.setQuickPulse(quickPulse);
+
+    RpConfiguration rpConfiguration = FirstEntryPoint.getRpConfiguration();
+    if (rpConfiguration != null) {
+      RpConfigurationPolling.startPolling(
+          rpConfiguration, configuration, telemetryClient, appIdSupplier, quickPulse);
+    }
+
+    // initialize StatsbeatModule
+    statsbeatModule.start(telemetryClient, configuration);
+
+    AfterAgentListener.setAppIdSupplier(appIdSupplier);
+
+    // TODO (trask) add this method to AutoConfigurationCustomizer upstream?
+    ((AutoConfiguredOpenTelemetrySdkBuilder) autoConfiguration).registerShutdownHook(false);
 
     autoConfiguration
         .addPropertiesCustomizer(new AiConfigCustomizer())
@@ -298,7 +300,7 @@ public class SecondEntryPoint implements AutoConfigurationCustomizerProvider {
                 configuration.preview.additionalPropagators,
                 configuration.preview.legacyRequestIdPropagation.enabled);
       }
-      DelegatingSampler.getInstance().setDelegate(Samplers.getSampler(configuration));
+      DelegatingSampler.getInstance().setDelegate(Samplers.getSampler(configuration, quickPulse));
     } else {
       // in Azure Functions, we configure later on, once we know user has opted in to tracing
       // (note: the default for DelegatingPropagator is to not propagate anything
@@ -327,12 +329,20 @@ public class SecondEntryPoint implements AutoConfigurationCustomizerProvider {
       tracerProvider.addSpanProcessor(new AiLegacyHeaderSpanProcessor());
     }
 
+    // live metrics span processor is used to add spans to quick pulse
+    SpanDataMapper mapper =
+        createSpanDataMapper(telemetryClient, configuration.preview.captureHttpServer4xxAsError);
+    if (quickPulse != null) {
+      tracerProvider.addSpanProcessor(new LiveMetricsSpanProcessor(mapper, quickPulse));
+    }
+
     String tracesExporter = otelConfig.getString("otel.traces.exporter");
     if ("none".equals(tracesExporter)) { // "none" is the default set in AiConfigCustomizer
       SpanExporter spanExporter =
           createSpanExporter(
-              telemetryClient, quickPulse, configuration.preview.captureHttpServer4xxAsError);
-
+              mapper,
+              telemetryClient.getGeneralBatchItemProcessor(),
+              telemetryClient.getStatsbeatModule());
       spanExporter = wrapSpanExporter(spanExporter, configuration);
 
       // using BatchSpanProcessor in order to get off of the application thread as soon as possible
@@ -347,37 +357,35 @@ public class SecondEntryPoint implements AutoConfigurationCustomizerProvider {
     return tracerProvider;
   }
 
+  private static SpanDataMapper createSpanDataMapper(
+      TelemetryClient telemetryClient, boolean captureHttpServer4xxAsError) {
+    return new SpanDataMapper(
+        captureHttpServer4xxAsError,
+        telemetryClient::populateDefaults,
+        (event, instrumentationName) -> {
+          boolean lettuce51 = instrumentationName.equals("io.opentelemetry.lettuce-5.1");
+          if (lettuce51 && event.getName().startsWith("redis.encode.")) {
+            // special case as these are noisy and come from the underlying library itself
+            return true;
+          }
+          boolean grpc16 = instrumentationName.equals("io.opentelemetry.grpc-1.6");
+          if (grpc16 && event.getName().equals("message")) {
+            // OpenTelemetry semantic conventions define semi-noisy grpc events
+            // https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/semantic_conventions/rpc.md#events
+            //
+            // we want to suppress these (at least by default)
+            return true;
+          }
+          return false;
+        });
+  }
+
   private static SpanExporter createSpanExporter(
-      TelemetryClient telemetryClient,
-      @Nullable QuickPulse quickPulse,
-      boolean captureHttpServer4xxAsError) {
-
-    SpanDataMapper mapper =
-        new SpanDataMapper(
-            captureHttpServer4xxAsError,
-            telemetryClient::populateDefaults,
-            (event, instrumentationName) -> {
-              boolean lettuce51 = instrumentationName.equals("io.opentelemetry.lettuce-5.1");
-              if (lettuce51 && event.getName().startsWith("redis.encode.")) {
-                // special case as these are noisy and come from the underlying library itself
-                return true;
-              }
-              boolean grpc16 = instrumentationName.equals("io.opentelemetry.grpc-1.6");
-              if (grpc16 && event.getName().equals("message")) {
-                // OpenTelemetry semantic conventions define semi-noisy grpc events
-                // https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/semantic_conventions/rpc.md#events
-                //
-                // we want to suppress these (at least by default)
-                return true;
-              }
-              return false;
-            });
-
-    BatchItemProcessor batchItemProcessor = telemetryClient.getGeneralBatchItemProcessor();
-
+      SpanDataMapper mapper,
+      BatchItemProcessor batchItemProcessor,
+      StatsbeatModule statsbeatModule) {
     return new StatsbeatSpanExporter(
-        new AgentSpanExporter(mapper, quickPulse, batchItemProcessor),
-        telemetryClient.getStatsbeatModule());
+        new AgentSpanExporter(mapper, batchItemProcessor), statsbeatModule);
   }
 
   private static SpanExporter wrapSpanExporter(
@@ -448,9 +456,19 @@ public class SecondEntryPoint implements AutoConfigurationCustomizerProvider {
     // "ai.preview.service_name" being set programmatically on CONSUMER spans
     builder.addLogRecordProcessor(new InheritedRoleNameLogProcessor());
 
+    // live metrics log processor is used to add logs to quick pulse when it's enabled
+    LogDataMapper mapper =
+        createLogDataMapper(
+            telemetryClient, configuration.preview.captureLoggingLevelAsCustomDimension);
+    if (quickPulse != null) {
+      builder.addLogRecordProcessor(new LiveMetricsLogProcessor(mapper, quickPulse));
+    }
+
     String logsExporter = otelConfig.getString("otel.logs.exporter");
     if ("none".equals(logsExporter)) { // "none" is the default set in AiConfigCustomizer
-      LogRecordExporter logExporter = createLogExporter(telemetryClient, quickPulse, configuration);
+      LogRecordExporter logExporter =
+          createLogExporter(
+              mapper, quickPulse, telemetryClient.getGeneralBatchItemProcessor(), configuration);
 
       logExporter = wrapLogExporter(logExporter, configuration);
 
@@ -466,16 +484,17 @@ public class SecondEntryPoint implements AutoConfigurationCustomizerProvider {
     return builder;
   }
 
+  private static LogDataMapper createLogDataMapper(
+      TelemetryClient telemetryClient, boolean captureLoggingLevelAsCustomDimension) {
+    return new LogDataMapper(
+        captureLoggingLevelAsCustomDimension, telemetryClient::populateDefaults);
+  }
+
   private static LogRecordExporter createLogExporter(
-      TelemetryClient telemetryClient,
+      LogDataMapper mapper,
       @Nullable QuickPulse quickPulse,
+      BatchItemProcessor batchItemProcessor,
       Configuration configuration) {
-
-    LogDataMapper mapper =
-        new LogDataMapper(
-            configuration.preview.captureLoggingLevelAsCustomDimension,
-            telemetryClient::populateDefaults);
-
     List<Configuration.SamplingOverride> logSamplingOverrides =
         configuration.preview.sampling.overrides.stream()
             .filter(override -> override.telemetryType == SamplingTelemetryType.TRACE)
@@ -492,7 +511,7 @@ public class SecondEntryPoint implements AutoConfigurationCustomizerProvider {
             exceptionSamplingOverrides,
             mapper,
             quickPulse,
-            telemetryClient.getGeneralBatchItemProcessor());
+            batchItemProcessor);
 
     return agentLogExporter;
   }

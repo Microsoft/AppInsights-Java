@@ -5,6 +5,7 @@ package com.microsoft.applicationinsights.agent.internal.init;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 
+import com.azure.monitor.opentelemetry.exporter.implementation.quickpulse.QuickPulse;
 import com.azure.monitor.opentelemetry.exporter.implementation.utils.ThreadPoolUtils;
 import com.microsoft.applicationinsights.agent.internal.classicsdk.BytecodeUtilImpl;
 import com.microsoft.applicationinsights.agent.internal.configuration.Configuration;
@@ -31,17 +32,19 @@ public class RpConfigurationPolling implements Runnable {
   private final Configuration configuration;
   private final TelemetryClient telemetryClient;
   private final AppIdSupplier appIdSupplier;
+  private final QuickPulse quickPulse;
 
   public static void startPolling(
       RpConfiguration rpConfiguration,
       Configuration configuration,
       TelemetryClient telemetryClient,
-      AppIdSupplier appIdSupplier) {
+      AppIdSupplier appIdSupplier,
+      QuickPulse quickPulse) {
     Executors.newSingleThreadScheduledExecutor(
             ThreadPoolUtils.createDaemonThreadFactory(RpConfigurationPolling.class))
         .scheduleWithFixedDelay(
             new RpConfigurationPolling(
-                rpConfiguration, configuration, telemetryClient, appIdSupplier),
+                rpConfiguration, configuration, telemetryClient, appIdSupplier, quickPulse),
             60,
             60,
             SECONDS);
@@ -52,11 +55,13 @@ public class RpConfigurationPolling implements Runnable {
       RpConfiguration rpConfiguration,
       Configuration configuration,
       TelemetryClient telemetryClient,
-      AppIdSupplier appIdSupplier) {
+      AppIdSupplier appIdSupplier,
+      QuickPulse quickPulse) {
     this.rpConfiguration = rpConfiguration;
     this.configuration = configuration;
     this.telemetryClient = telemetryClient;
     this.appIdSupplier = appIdSupplier;
+    this.quickPulse = quickPulse;
   }
 
   @Override
@@ -112,7 +117,8 @@ public class RpConfigurationPolling implements Runnable {
         if (changed) {
           configuration.sampling.percentage = newRpConfiguration.sampling.percentage;
           configuration.sampling.requestsPerSecond = newRpConfiguration.sampling.requestsPerSecond;
-          DelegatingSampler.getInstance().setDelegate(Samplers.getSampler(configuration));
+          DelegatingSampler.getInstance()
+              .setDelegate(Samplers.getSampler(configuration, quickPulse));
           if (configuration.sampling.percentage != null) {
             BytecodeUtilImpl.samplingPercentage = configuration.sampling.percentage.floatValue();
           } else {

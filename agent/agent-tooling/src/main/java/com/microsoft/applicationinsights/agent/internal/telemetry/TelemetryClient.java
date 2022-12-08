@@ -159,6 +159,8 @@ public class TelemetryClient {
       throw new AssertionError("telemetry item is missing time");
     }
 
+    // only requests, dependencies, and exceptions are sent to quick pulse.
+    // this is needed for classic sdks backward compatibility.
     if (quickPulse != null) {
       quickPulse.add(telemetryItem);
     }
