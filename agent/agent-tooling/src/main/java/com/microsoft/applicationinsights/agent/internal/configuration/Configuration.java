@@ -281,8 +281,10 @@ public class Configuration {
   public static class Proxy {
 
     public String host;
+    // TODO (trask) consider removing default since using "https" proxy
+    // also doesn't match default for APPLICATIONINSIGHTS_HTTPS_PROXY=https://host (without a port)
     public int port = 80;
-    // password in json file is not secure, use APPLICATIONINSIGHTS_PROXY
+    // password in json file is not secure, use APPLICATIONINSIGHTS_HTTPS_PROXY
     public String username;
     public String password;
   }

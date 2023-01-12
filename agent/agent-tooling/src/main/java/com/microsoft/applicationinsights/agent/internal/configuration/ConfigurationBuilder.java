@@ -76,6 +76,8 @@ public class ConfigurationBuilder {
 
   // not recommending Azure SDK's HTTPS_PROXY because it requires also setting
   // -Djava.net.useSystemProxies=true
+  private static final String APPLICATIONINSIGHTS_HTTPS_PROXY = "APPLICATIONINSIGHTS_HTTPS_PROXY";
+  // older, kept around for backwards compatibility
   private static final String APPLICATIONINSIGHTS_PROXY = "APPLICATIONINSIGHTS_PROXY";
 
   private static final String APPLICATIONINSIGHTS_SELF_DIAGNOSTICS_LEVEL =
@@ -603,7 +605,21 @@ public class ConfigurationBuilder {
 
   private static Configuration.Proxy overlayProxyFromEnv(Configuration.Proxy proxy) {
 
-    String proxyEnvVar = getEnvVar(APPLICATIONINSIGHTS_PROXY);
+    String proxyEnvVar = getEnvVar(APPLICATIONINSIGHTS_HTTPS_PROXY);
+    if (proxyEnvVar != null && !proxyEnvVar.startsWith("https://")) {
+      configurationLogger.warn(
+          "APPLICATIONINSIGHTS_HTTPS_PROXY environment variable must start with \"https://\"");
+      return proxy;
+    }
+    if (proxyEnvVar == null) {
+      proxyEnvVar = getEnvVar(APPLICATIONINSIGHTS_PROXY);
+      if (proxyEnvVar != null) {
+        configurationLogger.warn(
+            "APPLICATIONINSIGHTS_PROXY environment variable has been deprecated and support"
+                + " for it will be removed in a future release, please transition from"
+                + " APPLICATIONINSIGHTS_PROXY to APPLICATIONINSIGHTS_HTTPS_PROXY");
+      }
+    }
     if (proxyEnvVar == null) {
       if (proxy.password != null) {
         configurationLogger.warn(
