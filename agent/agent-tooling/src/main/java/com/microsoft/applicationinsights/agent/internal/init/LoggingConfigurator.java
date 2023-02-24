@@ -110,7 +110,7 @@ public class LoggingConfigurator {
     Logger rootLogger = loggerContext.getLogger(ROOT_LOGGER_NAME);
     rootLogger.addAppender(configureFileAppender());
     Logger diagnosticLogger = loggerContext.getLogger(DiagnosticsHelper.DIAGNOSTICS_LOGGER_NAME);
-    diagnosticLogger.setLevel(Level.INFO);
+    diagnosticLogger.setLevel(Level.TRACE);
     diagnosticLogger.setAdditive(false);
     Appender<ILoggingEvent> diagnosticAppender = configureConsoleAppender();
     diagnosticLogger.addAppender(diagnosticAppender);

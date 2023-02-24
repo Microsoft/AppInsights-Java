@@ -591,7 +591,7 @@ public class Configuration {
 
   public static class SelfDiagnostics {
 
-    public String level = "info";
+    public String level = "trace";
     public String destination = "file+console";
     public DestinationFile file = new DestinationFile();
   }
