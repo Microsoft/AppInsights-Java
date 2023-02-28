@@ -45,8 +45,12 @@ import java.util.Map;
 import java.util.function.Supplier;
 import javax.annotation.Nullable;
 import org.apache.commons.text.StringSubstitutor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class TelemetryClient {
+
+  private static final Logger logger = LoggerFactory.getLogger(TelemetryClient.class);
 
   private static final String TELEMETRY_FOLDER_NAME = "telemetry";
   private static final String STATSBEAT_FOLDER_NAME = "statsbeat";
@@ -137,7 +141,10 @@ public class TelemetryClient {
   }
 
   public void trackAsync(TelemetryItem telemetryItem) {
+
+    logger.debug("trackAsync: " + telemetryItem.getClass().getName());
     if (connectionString == null) {
+      logger.debug("trackAsync has null connectionString");
       return;
     }
 
@@ -146,23 +153,27 @@ public class TelemetryClient {
     if (data instanceof MetricsData) {
       MetricsData metricsData = (MetricsData) data;
       if (metricsData.getMetrics().isEmpty()) {
+        logger.debug("MetricsData has no metric point");
         throw new AssertionError("MetricsData has no metric point");
       }
       MetricDataPoint point = metricsData.getMetrics().get(0);
       String metricName = point.getName();
       if (MetricFilter.shouldSkip(metricName, metricFilters)) {
+        logger.debug("MetricsData shouldSkip");
         return;
       }
 
       if (!Double.isFinite(point.getValue())) {
         // TODO (trask) add test for this
         // breeze doesn't like these values
+        logger.debug("MetricsData is infinite");
         return;
       }
     }
 
     if (telemetryItem.getTime() == null) {
       // this is easy to forget when adding new telemetry
+      logger.debug("telemetry item is missing time");
       throw new AssertionError("telemetry item is missing time");
     }
 

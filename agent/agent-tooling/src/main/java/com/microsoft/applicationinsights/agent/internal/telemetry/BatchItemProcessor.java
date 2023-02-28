@@ -22,9 +22,13 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 // copied from io.opentelemetry.sdk.trace.export.BatchSpanProcessor
 public final class BatchItemProcessor {
+
+  private static final Logger logger = LoggerFactory.getLogger(BatchItemProcessor.class);
 
   private static final String WORKER_THREAD_NAME =
       BatchItemProcessor.class.getSimpleName() + "_WorkerThread";
@@ -164,13 +168,22 @@ public final class BatchItemProcessor {
 
     @Override
     public void run() {
+      if (queueName.equals("metrics")) {
+        logger.debug("BatchItemProcessor.run()");
+      }
       updateNextExportTime();
 
       while (continueWork) {
+        if (queueName.equals("metrics")) {
+          logger.debug("BatchItemProcessor looping");
+        }
         if (flushRequested.get() != null) {
           flush();
         }
         while (!queue.isEmpty() && batch.size() < maxExportBatchSize) {
+          if (queueName.equals("metrics")) {
+            logger.debug("BatchItemProcessor adding to batch");
+          }
           batch.add(queue.poll());
         }
         if (batch.size() >= maxExportBatchSize || System.nanoTime() >= nextExportTime) {
@@ -178,12 +191,18 @@ public final class BatchItemProcessor {
           updateNextExportTime();
         }
         if (queue.isEmpty()) {
+          if (queueName.equals("metrics")) {
+            logger.debug("BatchItemProcessor queue is empty, waiting...");
+          }
           try {
             long pollWaitTime = nextExportTime - System.nanoTime();
             if (pollWaitTime > 0) {
               itemsNeeded.set(maxExportBatchSize - batch.size());
               signal.poll(pollWaitTime, TimeUnit.NANOSECONDS);
               itemsNeeded.set(Integer.MAX_VALUE);
+            }
+            if (queueName.equals("metrics")) {
+              logger.debug("BatchItemProcessor queue is done waiting");
             }
           } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
