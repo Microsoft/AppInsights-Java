@@ -67,6 +67,10 @@ public final class BatchItemProcessor {
             queue.capacity(),
             queueName);
     Thread workerThread = new DaemonThreadFactory(WORKER_THREAD_NAME).newThread(worker);
+    workerThread.setUncaughtExceptionHandler(
+        (t, e) -> {
+          logger.error(e.getMessage(), e);
+        });
     workerThread.start();
   }
 
