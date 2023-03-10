@@ -23,12 +23,13 @@ public class SnippetConfiguration {
           + "</script>\n";
 
   public static void updateInstrumentationKey() {
+    System.out.println("--------- updateInstrumentationKey ----------- ");
     Configuration configuration = FirstEntryPoint.getConfiguration();
     if (Strings.isNullOrEmpty(configuration.connectionString)) {
       if (!configuration.connectionStringConfiguredAtRuntime) {
         return;
       }
-    }
+    } // siyu
     snippet = snippet.replace("INSTRUMENTATION_KEY", configuration.connectionString);
     ExperimentalSnippetHolder.setSnippet(snippet);
   }
