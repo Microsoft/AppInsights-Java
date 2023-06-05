@@ -22,6 +22,7 @@ public class HttpHelper {
 
   public static String get(String url, String userAgent) throws IOException {
     HttpGet httpGet = new HttpGet(url);
+
     if (!userAgent.isEmpty()) {
       httpGet.setHeader("User-Agent", userAgent);
     }
@@ -30,7 +31,9 @@ public class HttpHelper {
 
   private static String getBody(HttpGet httpGet) throws IOException {
     try (CloseableHttpClient client = getHttpClient()) {
+      System.out.println(" ----------------\n");
       try (CloseableHttpResponse response = client.execute(httpGet)) {
+        System.out.println("----------------\n");
         return EntityUtils.toString(response.getEntity());
       }
     }

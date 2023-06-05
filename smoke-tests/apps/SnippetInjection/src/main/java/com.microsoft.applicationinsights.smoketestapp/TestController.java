@@ -3,12 +3,9 @@
 
 package com.microsoft.applicationinsights.smoketestapp;
 
-import org.springframework.stereotype.Controller;
-import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.ModelAndView;
 
 @RestController
 public class TestController {
@@ -18,28 +15,10 @@ public class TestController {
     return "OK";
   }
 
-//  @GetMapping(path="/hello")
-//  public String getHelloPage(){
-//    return "hello.html";
-//  }
-
-  @GetMapping("/hello")
-  public @ResponseBody String myPage() {
-    return "<!DOCTYPE html>\n"
-        + "<html lang=\"en\">\n"
-        + "<head>\n"
-        + "  <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\" />\n"
-        + "  <meta charset=\"UTF-8\">\n"
-        + "  <title>Hello</title>\n"
-        + "  <style>\n"
-        + "    h1 {color:red;}\n"
-        + "    p {color:blue;}\n"
-        + "  </style>\n"
-        + "</head>\n"
-        + "<body>\n"
-        + "<h1>h1 h1</h1>\n"
-        + "<p>hello hello</p>\n"
-        + "</body>\n"
-        + "</html>\n";
+  @GetMapping("/test")
+  public ModelAndView getHelloPage() {
+    ModelAndView mav = new ModelAndView(); // the name of the HTML page
+    mav.setViewName("test.html");
+    return mav;
   }
 }

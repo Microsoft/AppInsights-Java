@@ -113,9 +113,9 @@ public class SecondEntryPoint implements AutoConfigurationCustomizerProvider {
       if (!configuration.connectionStringConfiguredAtRuntime) {
         throw new FriendlyException(
             "No connection string provided", "Please provide connection string.");
-      } else {
-        updateInstrumentationKey();
       }
+    } else {
+      updateInstrumentationKey();
     }
     // TODO (trask) should configuration validation be performed earlier?
     configuration.validate();
@@ -230,6 +230,8 @@ public class SecondEntryPoint implements AutoConfigurationCustomizerProvider {
           configuration.preview.statsbeat.disabled,
           initStatsbeatFeatureSet(configuration));
     }
+
+    System.out.println("--------- statsbeatModule ----------- ");
 
     // TODO (trask) add this method to AutoConfigurationCustomizer upstream?
     ((AutoConfiguredOpenTelemetrySdkBuilder) autoConfiguration).registerShutdownHook(false);
