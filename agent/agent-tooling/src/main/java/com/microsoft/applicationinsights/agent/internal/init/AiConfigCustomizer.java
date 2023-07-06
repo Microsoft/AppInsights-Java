@@ -279,6 +279,11 @@ public class AiConfigCustomizer implements Function<ConfigProperties, Map<String
       properties.put("otel.instrumentation.jaxrs-1.0.enabled", "true");
       properties.put("otel.instrumentation.jaxrs-annotations.enabled", "true");
     }
+
+    // disable process resource attributes
+    properties.put(
+        "otel.java.disabled.resource.providers",
+        "io.opentelemetry.instrumentation.resources.ProcessResourceProvider");
   }
 
   private static void setHttpHeaderConfiguration(
